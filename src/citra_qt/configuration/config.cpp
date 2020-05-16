@@ -496,6 +496,8 @@ void Config::ReadRendererValues() {
     Settings::values.use_shader_jit = ReadSetting(QStringLiteral("use_shader_jit"), true).toBool();
     Settings::values.use_disk_shader_cache =
         ReadSetting(QStringLiteral("use_disk_shader_cache"), true).toBool();
+    Settings::values.use_asynchronous_gpu_emulation =
+        ReadSetting(QStringLiteral("use_asynchronous_gpu_emulation"), true).toBool();
     Settings::values.use_vsync_new = ReadSetting(QStringLiteral("use_vsync_new"), true).toBool();
     Settings::values.resolution_factor =
         static_cast<u16>(ReadSetting(QStringLiteral("resolution_factor"), 1).toInt());
@@ -1005,6 +1007,8 @@ void Config::SaveRendererValues() {
     WriteSetting(QStringLiteral("use_shader_jit"), Settings::values.use_shader_jit, true);
     WriteSetting(QStringLiteral("use_disk_shader_cache"), Settings::values.use_disk_shader_cache,
                  true);
+    WriteSetting(QStringLiteral("use_asynchronous_gpu_emulation"),
+                 Settings::values.use_asynchronous_gpu_emulation, true);
     WriteSetting(QStringLiteral("use_vsync_new"), Settings::values.use_vsync_new, true);
     WriteSetting(QStringLiteral("resolution_factor"), Settings::values.resolution_factor, 1);
     WriteSetting(QStringLiteral("frame_limit"), Settings::values.frame_limit, 100);

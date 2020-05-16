@@ -129,6 +129,16 @@
        </widget>
       </item>
       <item>
+        <widget class="QCheckBox" name="toggle_asynchronous_gpu_emulation">
+          <property name="toolTip">
+            <string>Run the GPU emulation on a seperate thread.</string>
+          </property>
+          <property name="text">
+            <string>Enable asynchronous GPU emulation</string>
+          </property>
+        </widget>
+      </item>
+      <item>
        <widget class="QCheckBox" name="toggle_vsync_new">
         <property name="toolTip">
          <string>VSync prevents the screen from tearing, but some graphics cards have lower performance with VSync enabled. Keep it enabled if you don't notice a performance difference.</string>

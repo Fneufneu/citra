@@ -58,9 +58,7 @@ void SetCurrentThreadName(const char* name) {
 
 #else // !MSVC_VER, so must be POSIX threads
 
-// MinGW with the POSIX threading model does not support pthread_setname_np
-#if !defined(_WIN32) || defined(_MSC_VER)
-void SetCurrentThreadName(const char* name) {
+void SetCurrentThreadName([[maybe_unused]] const char* name) {
 #ifdef __APPLE__
     pthread_setname_np(name);
 #elif defined(__Bitrig__) || defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__)
@@ -75,12 +73,13 @@ void SetCurrentThreadName(const char* name) {
         errno = e;
         LOG_ERROR(Common, "Failed to set thread name to '{}': {}", truncated, GetLastErrorMsg());
     }
+#elif defined(_WIN32)
+    // Do nothing, MinGW with the POSIX threading model does not support pthread_setname_np
 #else
     pthread_setname_np(pthread_self(), name);
-#endif
+#endif // ifdef __APPLE__
 }
-#endif
 
-#endif
+#endif // ifdef _MSC_VER
 
 } // namespace Common

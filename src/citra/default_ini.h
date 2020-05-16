@@ -128,8 +128,12 @@ use_shader_jit =
 use_vsync_new =
 
 # Reduce stuttering by storing and loading generated shaders to disk
-# 0: Off, 1 (default. On)
+# 0: Off, 1 (default): On
 use_disk_shader_cache =
+
+# Runs the GPU emulation on its own thread, currently broken on SDL
+# 0 (Default): Off, 1: On
+use_asynchronous_gpu_emulation =
 
 # Resolution scale factor
 # 0: Auto (scales resolution to window size), 1: Native 3DS screen resolution, Otherwise a scale

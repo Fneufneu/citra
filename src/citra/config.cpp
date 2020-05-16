@@ -125,6 +125,12 @@ void Config::ReadValues() {
         static_cast<u16>(sdl2_config->GetInteger("Renderer", "resolution_factor", 1));
     Settings::values.use_disk_shader_cache =
         sdl2_config->GetBoolean("Renderer", "use_disk_shader_cache", true);
+
+    // TODO(SachinV): Async GPU is currently not supported on SDL because, SDL_PollEvents and
+    // SDL_SetWindowTitle get called on the GPUThread, which is not supported.
+    // See https://github.com/yuzu-emu/yuzu/pull/4976 for fix used by yuzu.
+    Settings::values.use_asynchronous_gpu_emulation =
+        sdl2_config->GetBoolean("Renderer", "use_asynchronous_gpu_emulation", false);
     Settings::values.frame_limit =
         static_cast<u16>(sdl2_config->GetInteger("Renderer", "frame_limit", 100));
     Settings::values.use_frame_limit_alternate =
