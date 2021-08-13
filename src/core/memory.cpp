@@ -20,6 +20,7 @@
 #include "core/hle/lock.h"
 #include "core/memory.h"
 #include "core/settings.h"
+#include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 #include "video_core/video_core.h"
 
@@ -575,7 +576,7 @@ void MemorySystem::RasterizerMarkRegionCached(PAddr start, u32 size, bool cached
 }
 
 void RasterizerFlushRegion(PAddr start, u32 size) {
-    if (VideoCore::g_renderer == nullptr) {
+    if (VideoCore::g_gpu == nullptr) {
         return;
     }
 
@@ -583,7 +584,7 @@ void RasterizerFlushRegion(PAddr start, u32 size) {
 }
 
 void RasterizerInvalidateRegion(PAddr start, u32 size) {
-    if (VideoCore::g_renderer == nullptr) {
+    if (VideoCore::g_gpu == nullptr) {
         return;
     }
 
@@ -593,7 +594,7 @@ void RasterizerInvalidateRegion(PAddr start, u32 size) {
 void RasterizerFlushAndInvalidateRegion(PAddr start, u32 size) {
     // Since pages are unmapped on shutdown after video core is shutdown, the renderer may be
     // null here
-    if (VideoCore::g_renderer == nullptr) {
+    if (VideoCore::g_gpu == nullptr) {
         return;
     }
 
@@ -603,17 +604,17 @@ void RasterizerFlushAndInvalidateRegion(PAddr start, u32 size) {
 void RasterizerClearAll(bool flush) {
     // Since pages are unmapped on shutdown after video core is shutdown, the renderer may be
     // null here
-    if (VideoCore::g_renderer == nullptr) {
+    if (VideoCore::g_gpu == nullptr) {
         return;
     }
 
-    VideoCore::g_renderer->Rasterizer()->ClearAll(flush);
+    VideoCore::g_gpu->Renderer().Rasterizer()->ClearAll(flush);
 }
 
 void RasterizerFlushVirtualRegion(VAddr start, u32 size, FlushMode mode) {
     // Since pages are unmapped on shutdown after video core is shutdown, the renderer may be
     // null here
-    if (VideoCore::g_renderer == nullptr) {
+    if (VideoCore::g_gpu == nullptr) {
         return;
     }
 

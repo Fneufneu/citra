@@ -6,6 +6,7 @@
 #include <type_traits>
 #include "core/global.h"
 #include "video_core/geometry_pipeline.h"
+#include "video_core/gpu.h"
 #include "video_core/pica.h"
 #include "video_core/pica_state.h"
 #include "video_core/renderer_base.h"
@@ -42,7 +43,7 @@ State::State() : geometry_pipeline(*this) {
         using Pica::Shader::OutputVertex;
         auto AddTriangle = [this](const OutputVertex& v0, const OutputVertex& v1,
                                   const OutputVertex& v2) {
-            VideoCore::g_renderer->Rasterizer()->AddTriangle(v0, v1, v2);
+            VideoCore::g_gpu->Renderer().Rasterizer()->AddTriangle(v0, v1, v2);
         };
         primitive_assembler.SubmitVertex(
             Shader::OutputVertex::FromAttributeBuffer(regs.rasterizer, vertex), AddTriangle);

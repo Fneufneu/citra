@@ -9,16 +9,22 @@
 #include "video_core/renderer_base.h"
 
 namespace VideoCore {
-GPUBackend::GPUBackend(VideoCore::RendererBase& renderer) : renderer{renderer} {}
+GPUBackend::GPUBackend(std::unique_ptr<VideoCore::RendererBase>&& renderer_)
+    : renderer{std::move(renderer_)} {}
 
 GPUBackend::~GPUBackend() = default;
 
 void GPUBackend::WaitForProcessing() {}
 
-GPUSerial::GPUSerial(Core::System& system, VideoCore::RendererBase& renderer)
-    : GPUBackend(renderer), system{system} {}
+GPUSerial::GPUSerial(Core::System& system_, std::unique_ptr<VideoCore::RendererBase>&& renderer_,
+                     std::unique_ptr<Frontend::GraphicsContext>&& context_)
+    : GPUBackend(std::move(renderer_)), system{system_}, context{std::move(context_)} {}
 
 GPUSerial::~GPUSerial() {}
+
+void GPUSerial::Start() {
+    context->MakeCurrent();
+}
 
 void GPUSerial::ProcessCommandList(PAddr list, u32 size) {
     Pica::CommandProcessor::ProcessCommandList(list, size);
@@ -26,7 +32,7 @@ void GPUSerial::ProcessCommandList(PAddr list, u32 size) {
 }
 
 void GPUSerial::SwapBuffers() {
-    renderer.SwapBuffers();
+    renderer->SwapBuffers();
     Pica::CommandProcessor::AfterSwapBuffers();
 }
 
@@ -41,21 +47,30 @@ void GPUSerial::MemoryFill(const GPU::Regs::MemoryFillConfig* config, bool is_se
 }
 
 void GPUSerial::FlushRegion(VAddr addr, u64 size) {
-    renderer.Rasterizer()->FlushRegion(addr, size);
+    renderer->Rasterizer()->FlushRegion(addr, size);
 }
 
 void GPUSerial::FlushAndInvalidateRegion(VAddr addr, u64 size) {
-    renderer.Rasterizer()->FlushAndInvalidateRegion(addr, size);
+    renderer->Rasterizer()->FlushAndInvalidateRegion(addr, size);
 }
 
 void GPUSerial::InvalidateRegion(VAddr addr, u64 size) {
-    renderer.Rasterizer()->InvalidateRegion(addr, size);
+    renderer->Rasterizer()->InvalidateRegion(addr, size);
 }
 
-GPUParallel::GPUParallel(Core::System& system, VideoCore::RendererBase& renderer)
-    : GPUBackend(renderer), gpu_thread(system, renderer) {}
+GPUParallel::GPUParallel(Core::System& system_,
+                         std::unique_ptr<VideoCore::RendererBase>&& renderer_,
+                         std::unique_ptr<Frontend::GraphicsContext>&& context_)
+    : GPUBackend(std::move(renderer_)), gpu_thread(system_), gpu_context{std::move(context_)},
+      cpu_context{renderer->GetRenderWindow().CreateSharedContext()} {
+    gpu_thread.StartThread(*renderer, *gpu_context);
+}
 
 GPUParallel::~GPUParallel() = default;
+
+void GPUParallel::Start() {
+    cpu_context->MakeCurrent();
+}
 
 void GPUParallel::ProcessCommandList(PAddr list, u32 size) {
     gpu_thread.SubmitList(list, size);

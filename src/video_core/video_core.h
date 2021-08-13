@@ -26,7 +26,6 @@ namespace VideoCore {
 class GPUBackend;
 class RendererBase;
 
-extern std::unique_ptr<RendererBase> g_renderer; ///< Renderer plugin
 extern std::unique_ptr<VideoCore::GPUBackend> g_gpu;
 
 // TODO: Wrap these in a user settings struct along with any other graphics settings (often set from

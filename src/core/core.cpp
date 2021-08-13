@@ -46,6 +46,7 @@
 #include "core/rpc/rpc_server.h"
 #include "core/settings.h"
 #include "network/network.h"
+#include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 #include "video_core/video_core.h"
 
@@ -437,8 +438,20 @@ System::ResultStatus System::Init(Frontend::EmuWindow& emu_window, u32 system_mo
     return ResultStatus::Success;
 }
 
+VideoCore::GPUBackend& System::GPU() {
+    return *VideoCore::g_gpu;
+}
+
+const VideoCore::GPUBackend& System::GPU() const {
+    return *VideoCore::g_gpu;
+}
+
 VideoCore::RendererBase& System::Renderer() {
-    return *VideoCore::g_renderer;
+    return VideoCore::g_gpu->Renderer();
+}
+
+const VideoCore::RendererBase& System::Renderer() const {
+    return VideoCore::g_gpu->Renderer();
 }
 
 Service::SM::ServiceManager& System::ServiceManager() {
@@ -635,7 +648,7 @@ void System::serialize(Archive& ar, const unsigned int file_version) {
         Service::GSP::SetGlobalModule(*this);
         memory->SetDSP(*dsp_core);
         cheat_engine->Connect();
-        VideoCore::g_renderer->Sync();
+        VideoCore::g_gpu->Renderer().Sync();
     }
 }
 

@@ -14,11 +14,19 @@
 #include <optional>
 #include <thread>
 #include <variant>
+#include "common/common_types.h"
 #include "common/threadsafe_queue.h"
-#include "core/core_timing.h"
-#include "core/frontend/emu_window.h"
 #include "core/settings.h"
 #include "video_core/command_processor.h"
+
+namespace Core {
+class System;
+struct TimingEventType;
+} // namespace Core
+
+namespace Frontend {
+class GraphicsContext;
+}
 
 namespace VideoCore {
 class RendererBase;
@@ -183,8 +191,10 @@ struct SynchState final {
 /// Class used to manage the GPU thread
 class ThreadManager final {
 public:
-    explicit ThreadManager(Core::System& system, VideoCore::RendererBase& renderer);
+    explicit ThreadManager(Core::System& system);
     ~ThreadManager();
+
+    void StartThread(VideoCore::RendererBase& renderer, Frontend::GraphicsContext& context);
 
     void SubmitList(PAddr list, u32 size);
 

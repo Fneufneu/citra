@@ -35,6 +35,26 @@
 #include "video_core/renderer_opengl/renderer_opengl.h"
 #include "video_core/video_core.h"
 
+namespace {
+/// Returns true if any debug tool is attached
+bool HasDebugTool() {
+    const bool nsight = std::getenv("NVTX_INJECTION64_PATH") || std::getenv("NSIGHT_LAUNCHED");
+    if (nsight) {
+        return true;
+    }
+
+    GLint num_extensions;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
+    for (GLuint index = 0; index < static_cast<GLuint>(num_extensions); ++index) {
+        const auto name = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, index));
+        if (!std::strcmp(name, "GL_EXT_debug_tool")) {
+            return true;
+        }
+    }
+    return false;
+}
+} // Anonymous namespace
+
 namespace OpenGL {
 
 // If the size of this is too small, it ends up creating a soft cap on FPS as the renderer will have
@@ -364,8 +384,9 @@ static std::array<GLfloat, 3 * 2> MakeOrthographicMatrix(const float width, cons
     return matrix;
 }
 
-RendererOpenGL::RendererOpenGL(Frontend::EmuWindow& window)
-    : RendererBase{window}, frame_dumper(Core::System::GetInstance().VideoDumper(), window) {
+RendererOpenGL::RendererOpenGL(Frontend::EmuWindow& window, Frontend::GraphicsContext& context)
+    : RendererBase{window}, context{context},
+      frame_dumper(Core::System::GetInstance().VideoDumper(), window) {
 
     window.mailbox = std::make_unique<OGLTextureMailbox>();
     frame_dumper.mailbox = std::make_unique<OGLVideoDumpingMailbox>();
@@ -388,6 +409,12 @@ void RendererOpenGL::SwapBuffers() {
 
     const auto& layout = render_window.GetFramebufferLayout();
     RenderToMailbox(layout, render_window.mailbox, false);
+
+    if (has_debug_tool) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        Present(0);
+        context.SwapBuffers();
+    }
 
     if (frame_dumper.IsDumping()) {
         try {
@@ -1123,12 +1150,21 @@ void RendererOpenGL::DrawScreens(const Layout::FramebufferLayout& layout, bool f
     }
 }
 
-void RendererOpenGL::TryPresent(int timeout_ms) {
+bool RendererOpenGL::TryPresent(int timeout_ms) {
+    if (has_debug_tool) {
+        LOG_DEBUG(Render_OpenGL,
+                  "Skipping presentation because we are presenting on the main context");
+        return false;
+    }
+    return Present(timeout_ms);
+}
+
+bool RendererOpenGL::Present(int timeout_ms) {
     const auto& layout = render_window.GetFramebufferLayout();
     auto frame = render_window.mailbox->TryGetPresentFrame(timeout_ms);
     if (!frame) {
         LOG_DEBUG(Render_OpenGL, "TryGetPresentFrame returned no frame to present");
-        return;
+        return false;
     }
 
     // Clearing before a full overwrite of a fbo can signal to drivers that they can avoid a
@@ -1156,11 +1192,12 @@ void RendererOpenGL::TryPresent(int timeout_ms) {
         glDeleteSync(frame->present_fence);
     }
 
-    /* insert fence for the main thread to block on */
+    // Insert fence for the main thread to block on
     frame->present_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     glFlush();
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    return true;
 }
 
 /// Updates the framerate
@@ -1241,6 +1278,8 @@ static void APIENTRY DebugHandler(GLenum source, GLenum type, GLuint id, GLenum 
 
 /// Initialize the renderer
 VideoCore::ResultStatus RendererOpenGL::Init() {
+    auto scope = context.Acquire();
+
 #ifndef ANDROID
     if (!gladLoadGL()) {
         return VideoCore::ResultStatus::ErrorBelowGL33;
@@ -1253,11 +1292,6 @@ VideoCore::ResultStatus RendererOpenGL::Init() {
         glDebugMessageCallback(DebugHandler, nullptr);
     }
 #endif
-
-    if (Settings::values.use_asynchronous_gpu_emulation) {
-        render_window.MakeCurrent();
-    }
-
     const char* gl_version{reinterpret_cast<char const*>(glGetString(GL_VERSION))};
     const char* gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
     const char* gpu_model{reinterpret_cast<char const*>(glGetString(GL_RENDERER))};
@@ -1280,13 +1314,11 @@ VideoCore::ResultStatus RendererOpenGL::Init() {
         return VideoCore::ResultStatus::ErrorBelowGL33;
     }
 
+    has_debug_tool = HasDebugTool();
+
     InitOpenGLObjects();
 
     RefreshRasterizerSetting();
-
-    if (Settings::values.use_asynchronous_gpu_emulation) {
-        render_window.DoneCurrent();
-    }
 
     return VideoCore::ResultStatus::Success;
 }

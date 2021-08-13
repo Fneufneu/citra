@@ -20,6 +20,7 @@
 #include "input_common/motion_emu.h"
 #include "input_common/sdl/sdl.h"
 #include "network/network.h"
+#include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 #include "video_core/video_core.h"
 
@@ -36,11 +37,18 @@ SharedContext_SDL2::~SharedContext_SDL2() {
 }
 
 void SharedContext_SDL2::MakeCurrent() {
-    SDL_GL_MakeCurrent(window, context);
+    if (is_current) {
+        return;
+    }
+    is_current = SDL_GL_MakeCurrent(window, context) == 0;
 }
 
 void SharedContext_SDL2::DoneCurrent() {
+    if (!is_current) {
+        return;
+    }
     SDL_GL_MakeCurrent(window, nullptr);
+    is_current = false;
 }
 
 void EmuWindow_SDL2::OnMouseMotion(s32 x, s32 y) {
@@ -176,22 +184,14 @@ EmuWindow_SDL2::EmuWindow_SDL2(bool fullscreen) {
         exit(1);
     }
 
-    dummy_window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 0, 0,
-                                    SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL);
-
     if (fullscreen) {
         Fullscreen();
     }
 
     window_context = SDL_GL_CreateContext(render_window);
-    core_context = CreateSharedContext();
 
     if (window_context == nullptr) {
         LOG_CRITICAL(Frontend, "Failed to create SDL2 GL context: {}", SDL_GetError());
-        exit(1);
-    }
-    if (core_context == nullptr) {
-        LOG_CRITICAL(Frontend, "Failed to create shared SDL2 GL context: {}", SDL_GetError());
         exit(1);
     }
 
@@ -211,7 +211,6 @@ EmuWindow_SDL2::EmuWindow_SDL2(bool fullscreen) {
 }
 
 EmuWindow_SDL2::~EmuWindow_SDL2() {
-    core_context.reset();
     Network::Shutdown();
     InputCommon::Shutdown();
     SDL_GL_DeleteContext(window_context);
@@ -226,7 +225,7 @@ void EmuWindow_SDL2::Present() {
     SDL_GL_MakeCurrent(render_window, window_context);
     SDL_GL_SetSwapInterval(1);
     while (IsOpen()) {
-        VideoCore::g_renderer->TryPresent(100);
+        VideoCore::g_gpu->Renderer().TryPresent(100);
         SDL_GL_SwapWindow(render_window);
     }
     SDL_GL_MakeCurrent(render_window, nullptr);
@@ -296,14 +295,6 @@ void EmuWindow_SDL2::PollEvents() {
         SDL_SetWindowTitle(render_window, title.c_str());
         last_time = current_time;
     }
-}
-
-void EmuWindow_SDL2::MakeCurrent() {
-    core_context->MakeCurrent();
-}
-
-void EmuWindow_SDL2::DoneCurrent() {
-    core_context->DoneCurrent();
 }
 
 void EmuWindow_SDL2::OnMinimalClientAreaChangeRequest(std::pair<u32, u32> minimal_size) {

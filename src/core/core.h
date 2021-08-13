@@ -59,7 +59,8 @@ class Backend;
 
 namespace VideoCore {
 class RendererBase;
-}
+class GPUBackend;
+} // namespace VideoCore
 
 namespace Core {
 
@@ -207,7 +208,13 @@ public:
         return *dsp_core;
     }
 
+    /// Gets a reference to the GPUBackend
+    [[nodiscard]] VideoCore::GPUBackend& GPU();
+    [[nodiscard]] const VideoCore::GPUBackend& GPU() const;
+
+    /// Gets a reference to the renderer
     [[nodiscard]] VideoCore::RendererBase& Renderer();
+    [[nodiscard]] const VideoCore::RendererBase& Renderer() const;
 
     /**
      * Gets a reference to the service manager.

@@ -25,6 +25,7 @@ public:
 private:
     SDL_GLContext context;
     SDL_Window* window;
+    bool is_current = false;
 };
 
 class EmuWindow_SDL2 : public Frontend::EmuWindow {
@@ -37,17 +38,11 @@ public:
     /// Polls window events
     void PollEvents() override;
 
-    /// Makes the graphics context current for the caller thread
-    void MakeCurrent() override;
-
-    /// Releases the GL context from the caller thread
-    void DoneCurrent() override;
-
     /// Whether the window is still open, and a close request hasn't yet been sent
     bool IsOpen() const;
 
     /// Creates a new context that is shared with the current context
-    std::unique_ptr<GraphicsContext> CreateSharedContext() const override;
+    std::unique_ptr<Frontend::GraphicsContext> CreateSharedContext() const override;
 
 private:
     /// Called by PollEvents when a key is pressed or released.
@@ -86,16 +81,10 @@ private:
     /// Internal SDL2 render window
     SDL_Window* render_window;
 
-    /// Fake hidden window for the core context
-    SDL_Window* dummy_window;
-
     using SDL_GLContext = void*;
 
     /// The OpenGL context associated with the window
     SDL_GLContext window_context;
-
-    /// The OpenGL context associated with the core
-    std::unique_ptr<Frontend::GraphicsContext> core_context;
 
     /// Keeps track of how often to update the title bar during gameplay
     u32 last_time = 0;

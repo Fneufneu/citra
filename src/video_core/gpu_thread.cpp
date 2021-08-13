@@ -8,7 +8,6 @@
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/dumping/backend.h"
-#include "core/frontend/scope_acquire_context.h"
 #include "core/settings.h"
 #include "video_core/command_processor.h"
 #include "video_core/gpu_thread.h"
@@ -17,7 +16,8 @@
 namespace VideoCore::GPUThread {
 
 /// Runs the GPU thread
-static void RunThread(VideoCore::RendererBase& renderer, SynchState& state, Core::System& system) {
+static void RunThread(VideoCore::RendererBase& renderer, Frontend::GraphicsContext& context,
+                      SynchState& state, Core::System& system) {
 
     MicroProfileOnThreadCreate("GpuThread");
     Common::SetCurrentThreadName("GpuThread");
@@ -30,7 +30,7 @@ static void RunThread(VideoCore::RendererBase& renderer, SynchState& state, Core
         return;
     }
 
-    Frontend::ScopeAcquireContext acquire_context{renderer.GetRenderWindow()};
+    auto current_context = context.Acquire();
 
     while (state.is_running) {
         state.WaitForCommands();
@@ -67,20 +67,26 @@ static void RunThread(VideoCore::RendererBase& renderer, SynchState& state, Core
     }
 }
 
-ThreadManager::ThreadManager(Core::System& system, VideoCore::RendererBase& renderer)
-    : system{system}, renderer{renderer} {
+ThreadManager::ThreadManager(Core::System& system) : system{system}, renderer{renderer} {
     synchronize_event = system.CoreTiming().RegisterEvent(
         "GPUSynchronizeEvent", [this](u64 fence, s64) { state.WaitForSynchronization(fence); });
-
-    thread = std::make_unique<std::thread>(RunThread, std::ref(renderer), std::ref(state),
-                                           std::ref(system));
-    thread_id = thread->get_id();
 }
 
 ThreadManager::~ThreadManager() {
+    if (!thread->joinable()) {
+        return;
+    }
+
     // Notify GPU thread that a shutdown is pending
     state.is_running.exchange(false);
     thread->join();
+}
+
+void ThreadManager::StartThread(VideoCore::RendererBase& renderer,
+                                Frontend::GraphicsContext& context) {
+    thread = std::make_unique<std::thread>(RunThread, std::ref(renderer), std::ref(context),
+                                           std::ref(state), std::ref(system));
+    thread_id = thread->get_id();
 }
 
 void ThreadManager::Synchronize(u64 fence, Settings::GpuTimingMode mode) {

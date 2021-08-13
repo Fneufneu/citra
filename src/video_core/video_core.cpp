@@ -20,8 +20,6 @@
 // Video Core namespace
 
 namespace VideoCore {
-
-std::unique_ptr<RendererBase> g_renderer; ///< Renderer plugin
 std::unique_ptr<GPUBackend> g_gpu;
 
 std::atomic<bool> g_hw_renderer_enabled;
@@ -50,31 +48,34 @@ ResultStatus Init(Core::System& system, Frontend::EmuWindow& emu_window,
 
     OpenGL::GLES = Settings::values.use_gles;
 
-    g_renderer = std::make_unique<OpenGL::RendererOpenGL>(emu_window);
+    auto context = emu_window.CreateSharedContext();
 
-    if (Settings::values.use_asynchronous_gpu_emulation) {
-        g_gpu = std::make_unique<VideoCore::GPUParallel>(system, *g_renderer);
-    } else {
-        g_gpu = std::make_unique<VideoCore::GPUSerial>(system, *g_renderer);
-    }
-    ResultStatus result = g_renderer->Init();
-
+    auto renderer = std::make_unique<OpenGL::RendererOpenGL>(emu_window, *context);
+    ResultStatus result = renderer->Init();
     if (result != ResultStatus::Success) {
         LOG_ERROR(Render, "initialization failed !");
+        return result;
     } else {
         LOG_DEBUG(Render, "initialized OK");
     }
 
-    return result;
+    if (Settings::values.use_asynchronous_gpu_emulation) {
+        g_gpu = std::make_unique<VideoCore::GPUParallel>(system, std::move(renderer),
+                                                         std::move(context));
+    } else {
+        g_gpu =
+            std::make_unique<VideoCore::GPUSerial>(system, std::move(renderer), std::move(context));
+    }
+
+    return ResultStatus::Success;
 }
 
 /// Shutdown the video core
 void Shutdown() {
     Pica::Shutdown();
 
-    g_renderer->ShutDown();
+    g_gpu->Renderer().ShutDown();
     g_gpu.reset();
-    g_renderer.reset();
 
     LOG_DEBUG(Render, "shutdown OK");
 }
@@ -95,7 +96,7 @@ u16 GetResolutionScaleFactor() {
     if (g_hw_renderer_enabled) {
         return Settings::values.resolution_factor
                    ? Settings::values.resolution_factor
-                   : g_renderer->GetRenderWindow().GetFramebufferLayout().GetScalingRatio();
+                   : g_gpu->Renderer().GetRenderWindow().GetFramebufferLayout().GetScalingRatio();
     } else {
         // Software renderer always render at native resolution
         return 1;

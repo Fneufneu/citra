@@ -11,6 +11,7 @@
 #include "core/dumping/ffmpeg_backend.h"
 #include "core/hw/gpu.h"
 #include "core/settings.h"
+#include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 #include "video_core/video_core.h"
 
@@ -549,7 +550,7 @@ bool FFmpegBackend::StartDumping(const std::string& path, const Layout::Framebuf
         }
     });
 
-    VideoCore::g_renderer->PrepareVideoDumping();
+    VideoCore::g_gpu->Renderer().PrepareVideoDumping();
     is_dumping = true;
 
     return true;
@@ -582,7 +583,7 @@ void FFmpegBackend::AddAudioSample(const std::array<s16, 2>& sample) {
 
 void FFmpegBackend::StopDumping() {
     is_dumping = false;
-    VideoCore::g_renderer->CleanupVideoDumping();
+    VideoCore::g_gpu->Renderer().CleanupVideoDumping();
 
     // Flush the video processing queue
     AddVideoFrame(VideoFrame());

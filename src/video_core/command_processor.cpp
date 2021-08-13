@@ -20,6 +20,7 @@
 #include "core/tracer/recorder.h"
 #include "video_core/command_processor.h"
 #include "video_core/debug_utils/debug_utils.h"
+#include "video_core/gpu.h"
 #include "video_core/pica.h"
 #include "video_core/pica_state.h"
 #include "video_core/pica_types.h"
@@ -253,7 +254,7 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
                     // TODO: If drawing after every immediate mode triangle kills performance,
                     // change it to flush triangles whenever a drawing config register changes
                     // See: https://github.com/citra-emu/citra/pull/2866#issuecomment-327011550
-                    VideoCore::g_renderer->Rasterizer()->DrawTriangles();
+                    VideoCore::g_gpu->Renderer().Rasterizer()->DrawTriangles();
                     if (g_debug_context) {
                         g_debug_context->OnEvent(DebugContext::Event::FinishedPrimitiveBatch,
                                                  nullptr);
@@ -315,7 +316,7 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
         bool is_indexed = (id == PICA_REG_INDEX(pipeline.trigger_draw_indexed));
 
         if (accelerate_draw &&
-            VideoCore::g_renderer->Rasterizer()->AccelerateDrawBatch(is_indexed)) {
+            VideoCore::g_gpu->Renderer().Rasterizer()->AccelerateDrawBatch(is_indexed)) {
             if (g_debug_context) {
                 g_debug_context->OnEvent(DebugContext::Event::FinishedPrimitiveBatch, nullptr);
             }
@@ -433,7 +434,7 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
                 VideoCore::g_memory->GetPhysicalPointer(range.first), range.second, range.first);
         }
 
-        VideoCore::g_renderer->Rasterizer()->DrawTriangles();
+        VideoCore::g_gpu->Renderer().Rasterizer()->DrawTriangles();
         if (g_debug_context) {
             g_debug_context->OnEvent(DebugContext::Event::FinishedPrimitiveBatch, nullptr);
         }
@@ -649,7 +650,7 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
         break;
     }
 
-    VideoCore::g_renderer->Rasterizer()->NotifyPicaRegisterChanged(id);
+    VideoCore::g_gpu->Renderer().Rasterizer()->NotifyPicaRegisterChanged(id);
 
     if (g_debug_context)
         g_debug_context->OnEvent(DebugContext::Event::PicaCommandProcessed,
@@ -734,7 +735,7 @@ void ProcessMemoryFill(const GPU::Regs::MemoryFillConfig& config) {
     u8* start = VideoCore::g_memory->GetPhysicalPointer(start_addr);
     u8* end = VideoCore::g_memory->GetPhysicalPointer(end_addr);
 
-    if (VideoCore::g_renderer->Rasterizer()->AccelerateFill(config))
+    if (VideoCore::g_gpu->Renderer().Rasterizer()->AccelerateFill(config))
         return;
 
     Memory::RasterizerInvalidateRegion(config.GetStartAddress(),
@@ -799,7 +800,7 @@ static void DisplayTransfer(const GPU::Regs::DisplayTransferConfig& config) {
         return;
     }
 
-    if (VideoCore::g_renderer->Rasterizer()->AccelerateDisplayTransfer(config))
+    if (VideoCore::g_gpu->Renderer().Rasterizer()->AccelerateDisplayTransfer(config))
         return;
 
     u8* src_pointer = VideoCore::g_memory->GetPhysicalPointer(src_addr);
@@ -956,7 +957,7 @@ static void TextureCopy(const GPU::Regs::DisplayTransferConfig& config) {
         return;
     }
 
-    if (VideoCore::g_renderer->Rasterizer()->AccelerateTextureCopy(config))
+    if (VideoCore::g_gpu->Renderer().Rasterizer()->AccelerateTextureCopy(config))
         return;
 
     u8* src_pointer = VideoCore::g_memory->GetPhysicalPointer(src_addr);
@@ -996,10 +997,10 @@ static void TextureCopy(const GPU::Regs::DisplayTransferConfig& config) {
         config.texture_copy.size / output_width * (output_width + output_gap);
     // Only need to flush output if it has a gap
     if (output_gap != 0) {
-        VideoCore::g_renderer->Rasterizer()->FlushAndInvalidateRegion(
+        VideoCore::g_gpu->Renderer().Rasterizer()->FlushAndInvalidateRegion(
             config.GetPhysicalOutputAddress(), static_cast<u32>(contiguous_output_size));
     } else {
-        VideoCore::g_renderer->Rasterizer()->InvalidateRegion(
+        VideoCore::g_gpu->Renderer().Rasterizer()->InvalidateRegion(
             config.GetPhysicalOutputAddress(), static_cast<u32>(contiguous_output_size));
     }
 

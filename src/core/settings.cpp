@@ -14,6 +14,7 @@
 #include "core/hle/service/ir/ir_user.h"
 #include "core/hle/service/mic_u.h"
 #include "core/settings.h"
+#include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 #include "video_core/video_core.h"
 
@@ -34,8 +35,8 @@ void Apply() {
     VideoCore::g_use_disk_shader_cache = values.use_disk_shader_cache;
 
 #ifndef ANDROID
-    if (VideoCore::g_renderer) {
-        VideoCore::g_renderer->UpdateCurrentFramebufferLayout();
+    if (VideoCore::g_gpu) {
+        VideoCore::g_gpu->Renderer().UpdateCurrentFramebufferLayout();
     }
 #endif
 

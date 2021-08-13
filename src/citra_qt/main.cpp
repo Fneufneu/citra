@@ -76,7 +76,6 @@
 #include "core/file_sys/archive_extsavedata.h"
 #include "core/file_sys/archive_source_sd_savedata.h"
 #include "core/frontend/applets/default_applets.h"
-#include "core/frontend/scope_acquire_context.h"
 #include "core/gdbstub/gdbstub.h"
 #include "core/hle/service/fs/archive.h"
 #include "core/hle/service/nfc/nfc.h"
@@ -911,16 +910,7 @@ bool GMainWindow::LoadROM(const QString& filename) {
     if (emu_thread != nullptr)
         ShutdownGame();
 
-    render_window->InitRenderTarget();
-
-    Frontend::ScopeAcquireContext scope(*render_window);
-
-    const QString below_gl33_title = tr("OpenGL 3.3 Unsupported");
-    const QString below_gl33_message = tr("Your GPU may not support OpenGL 3.3, or you do not "
-                                          "have the latest graphics driver.");
-
-    if (!QOpenGLContext::globalShareContext()->versionFunctions<QOpenGLFunctions_3_3_Core>()) {
-        QMessageBox::critical(this, below_gl33_title, below_gl33_message);
+    if (!render_window->InitRenderTarget()) {
         return false;
     }
 
@@ -991,7 +981,9 @@ bool GMainWindow::LoadROM(const QString& filename) {
             break;
 
         case Core::System::ResultStatus::ErrorVideoCore_ErrorBelowGL33:
-            QMessageBox::critical(this, below_gl33_title, below_gl33_message);
+            QMessageBox::critical(this, tr("OpenGL 3.3 Unsupported"),
+                                  tr("Your GPU may not support OpenGL 3.3, or you do not "
+                                     "have the latest graphics driver."));
             break;
 
         default:
@@ -1082,7 +1074,7 @@ void GMainWindow::BootGame(const QString& filename) {
     }
 
     // Create and start the emulation thread
-    emu_thread = std::make_unique<EmuThread>(*render_window);
+    emu_thread = std::make_unique<EmuThread>();
     emit EmulationStarting(emu_thread.get());
     emu_thread->start();
 

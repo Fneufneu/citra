@@ -59,7 +59,7 @@ struct PresentationTexture {
 
 class RendererOpenGL : public VideoCore::RendererBase {
 public:
-    explicit RendererOpenGL(Frontend::EmuWindow& window);
+    explicit RendererOpenGL(Frontend::EmuWindow& window, Frontend::GraphicsContext& context);
     ~RendererOpenGL() override;
 
     /// Initialize the renderer
@@ -73,7 +73,8 @@ public:
 
     /// Draws the latest frame from texture mailbox to the currently bound draw framebuffer in this
     /// context
-    void TryPresent(int timeout_ms) override;
+    /// Returns true if a frame was drawn
+    bool TryPresent(int timeout_ms) override;
 
     /// Prepares for video dumping (e.g. create necessary buffers, etc)
     void PrepareVideoDumping() override;
@@ -107,6 +108,10 @@ private:
     // Fills active OpenGL texture with the given RGB color.
     void LoadColorToActiveGLTexture(u8 color_r, u8 color_g, u8 color_b, const TextureInfo& texture);
 
+    bool Present(int timeout_ms);
+
+    Frontend::GraphicsContext& context;
+
     OpenGLState state;
 
     // OpenGL object IDs
@@ -134,6 +139,8 @@ private:
     GLuint attrib_tex_coord;
 
     FrameDumperOpenGL frame_dumper;
+
+    bool has_debug_tool = false;
 };
 
 } // namespace OpenGL

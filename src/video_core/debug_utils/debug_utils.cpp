@@ -23,6 +23,7 @@
 #include "common/math_util.h"
 #include "common/vector_math.h"
 #include "video_core/debug_utils/debug_utils.h"
+#include "video_core/gpu.h"
 #include "video_core/pica_state.h"
 #include "video_core/pica_types.h"
 #include "video_core/rasterizer_interface.h"
@@ -47,7 +48,7 @@ void DebugContext::DoOnEvent(Event event, void* data) {
 
         // Commit the rasterizer's caches so framebuffers, render targets, etc. will show on debug
         // widgets
-        VideoCore::g_renderer->Rasterizer()->FlushAll();
+        VideoCore::g_gpu->Renderer().Rasterizer()->FlushAll();
 
         // TODO: Should stop the CPU thread here once we multithread emulation.
 

@@ -110,8 +110,6 @@ add_library(core STATIC
     frontend/input.h
     frontend/mic.cpp
     frontend/mic.h
-    frontend/scope_acquire_context.cpp
-    frontend/scope_acquire_context.h
     game_settings.cpp
     game_settings.h
     gdbstub/gdbstub.cpp

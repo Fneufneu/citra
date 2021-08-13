@@ -12,16 +12,21 @@ namespace Core {
 class System;
 }
 
+namespace Frontend {
+class GraphicsContext;
+}
+
 namespace VideoCore {
 
 class RendererBase;
 
 class GPUBackend {
 public:
-    explicit GPUBackend(VideoCore::RendererBase& renderer);
+    explicit GPUBackend(std::unique_ptr<VideoCore::RendererBase>&& renderer);
 
     virtual ~GPUBackend();
 
+    virtual void Start() = 0;
     virtual void ProcessCommandList(PAddr list, u32 size) = 0;
     virtual void SwapBuffers() = 0;
     virtual void DisplayTransfer(const GPU::Regs::DisplayTransferConfig* config) = 0;
@@ -31,16 +36,26 @@ public:
     virtual void InvalidateRegion(VAddr addr, u64 size) = 0;
     virtual void WaitForProcessing();
 
+    VideoCore::RendererBase& Renderer() {
+        return *renderer;
+    }
+
+    const VideoCore::RendererBase& Renderer() const {
+        return *renderer;
+    }
+
 protected:
-    VideoCore::RendererBase& renderer;
+    std::unique_ptr<VideoCore::RendererBase> renderer;
 };
 
 class GPUSerial : public GPUBackend {
 public:
-    explicit GPUSerial(Core::System& system, VideoCore::RendererBase& renderer);
+    explicit GPUSerial(Core::System& system, std::unique_ptr<VideoCore::RendererBase>&& renderer,
+                       std::unique_ptr<Frontend::GraphicsContext>&& context);
 
     ~GPUSerial();
 
+    void Start() override;
     void ProcessCommandList(PAddr list, u32 size) override;
     void SwapBuffers() override;
     void DisplayTransfer(const GPU::Regs::DisplayTransferConfig* config) override;
@@ -51,14 +66,17 @@ public:
 
 private:
     Core::System& system;
+    std::unique_ptr<Frontend::GraphicsContext> context;
 };
 
 class GPUParallel : public GPUBackend {
 public:
-    explicit GPUParallel(Core::System& system, VideoCore::RendererBase& renderer);
+    explicit GPUParallel(Core::System& system, std::unique_ptr<VideoCore::RendererBase>&& renderer,
+                         std::unique_ptr<Frontend::GraphicsContext>&& context);
 
     ~GPUParallel();
 
+    void Start() override;
     void ProcessCommandList(PAddr list, u32 size) override;
     void SwapBuffers() override;
     void DisplayTransfer(const GPU::Regs::DisplayTransferConfig* config) override;
@@ -70,6 +88,8 @@ public:
 
 private:
     GPUThread::ThreadManager gpu_thread;
+    std::unique_ptr<Frontend::GraphicsContext> cpu_context;
+    std::unique_ptr<Frontend::GraphicsContext> gpu_context;
 };
 
 } // namespace VideoCore

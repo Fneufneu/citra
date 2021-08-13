@@ -35,7 +35,6 @@
 #include "core/file_sys/cia_container.h"
 #include "core/frontend/applets/default_applets.h"
 #include "core/frontend/framebuffer_layout.h"
-#include "core/frontend/scope_acquire_context.h"
 #include "core/gdbstub/gdbstub.h"
 #include "core/hle/service/am/am.h"
 #include "core/hle/service/cfg/cfg.h"
@@ -43,6 +42,7 @@
 #include "core/movie.h"
 #include "core/settings.h"
 #include "network/network.h"
+#include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 
 #undef _UNICODE
@@ -359,7 +359,6 @@ int main(int argc, char** argv) {
     Core::System::GetInstance().RegisterImageInterface(std::make_shared<LodePNGImageInterface>());
 
     std::unique_ptr<EmuWindow_SDL2> emu_window{std::make_unique<EmuWindow_SDL2>(fullscreen)};
-    Frontend::ScopeAcquireContext scope(*emu_window);
     Core::System& system{Core::System::GetInstance()};
 
     const Core::System::ResultStatus load_result{system.Load(*emu_window, filepath)};
@@ -427,7 +426,8 @@ int main(int argc, char** argv) {
         system.VideoDumper().StartDumping(dump_video, layout);
     }
 
-    std::thread render_thread([&emu_window] { emu_window->Present(); });
+    // Core is loaded, start the GPU (makes the GPU contexts current to this thread)
+    system.GPU().Start();
 
     std::atomic_bool stop_run;
     Core::System::GetInstance().Renderer().Rasterizer()->LoadDiskResources(
@@ -435,6 +435,7 @@ int main(int argc, char** argv) {
             LOG_DEBUG(Frontend, "Loading stage {} progress {} {}", static_cast<u32>(stage), value,
                       total);
         });
+    std::thread render_thread([&emu_window] { emu_window->Present(); });
 
     while (emu_window->IsOpen()) {
         system.RunLoop();
