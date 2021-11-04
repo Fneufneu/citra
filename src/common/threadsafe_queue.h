@@ -46,15 +46,13 @@ public:
         ElementPtr* new_ptr = new ElementPtr();
         write_ptr->next.store(new_ptr, std::memory_order_release);
         write_ptr = new_ptr;
+        ++size;
 
-        const size_t previous_size{size++};
-
-        // Acquire the mutex and then immediately release it as a fence.
+        // cv_mutex must be held or else there will be a missed wakeup if the other thread is in the
+        // line before cv.wait
         // TODO(bunnei): This can be replaced with C++20 waitable atomics when properly supported.
         // See discussion on https://github.com/yuzu-emu/yuzu/pull/3173 for details.
-        if (previous_size == 0) {
-            std::lock_guard lock{cv_mutex};
-        }
+        std::lock_guard lock{cv_mutex};
         cv.notify_one();
     }
 
@@ -83,11 +81,15 @@ public:
         return true;
     }
 
-    T PopWait() {
+    void Wait() {
         if (Empty()) {
             std::unique_lock lock{cv_mutex};
-            cv.wait(lock, [this]() { return !Empty(); });
+            cv.wait(lock, [this] { return !Empty(); });
         }
+    }
+
+    T PopWait() {
+        Wait();
         T t;
         Pop(t);
         return t;
@@ -105,7 +107,7 @@ private:
     // and a pointer to the next ElementPtr
     class ElementPtr {
     public:
-        ElementPtr() = default;
+        ElementPtr() {}
         ~ElementPtr() {
             ElementPtr* next_ptr = next.load();
 
@@ -154,6 +156,10 @@ public:
 
     bool Pop(T& t) {
         return spsc_queue.Pop(t);
+    }
+
+    void Wait() {
+        spsc_queue.Wait();
     }
 
     T PopWait() {
