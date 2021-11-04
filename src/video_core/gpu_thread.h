@@ -116,23 +116,28 @@ struct InvalidateRegionCommand final {
     VAddr addr;
     u64 size;
 };
+
+/// Command to signal to the GPU thread that processing has ended
+struct EndProcessingCommand final {};
+
 static_assert(std::is_copy_assignable<InvalidateRegionCommand>::value,
               "InvalidateRegionCommand is not copy assignable");
 static_assert(std::is_copy_constructible<InvalidateRegionCommand>::value,
               "InvalidateRegionCommand is not copy constructable");
 
-using CommandData =
-    std::variant<SubmitListCommand, SwapBuffersCommand, MemoryFillCommand, DisplayTransferCommand,
-                 FlushRegionCommand, FlushAndInvalidateRegionCommand, InvalidateRegionCommand>;
+using CommandData = std::variant<EndProcessingCommand, SubmitListCommand, SwapBuffersCommand,
+                                 MemoryFillCommand, DisplayTransferCommand, FlushRegionCommand,
+                                 FlushAndInvalidateRegionCommand, InvalidateRegionCommand>;
 
 struct CommandDataContainer {
     CommandDataContainer() = default;
 
-    CommandDataContainer(CommandData&& data, u64 next_fence)
-        : data{std::move(data)}, fence{next_fence} {}
+    CommandDataContainer(CommandData&& data, u64 next_fence, bool block_)
+        : data{std::move(data)}, fence{next_fence}, block(block_) {}
 
     CommandData data;
     u64 fence{};
+    bool block{};
 };
 
 /// Struct used to synchronize the GPU thread
@@ -171,21 +176,20 @@ struct SynchState final {
     }
 
     void WaitForCommands() {
-        while (queue.Empty() && is_running)
-            ;
-        // std::unique_lock lock{commands_mutex};
-        // commands_condition.wait(lock, [this] { return !queue.Empty(); });
+        queue.Wait();
     }
 
     void WaitForProcessing() {
-        while (!queue.Empty() && is_running)
-            ;
+        std::unique_lock lock{write_lock};
+        cv.wait(lock, [this] { return queue.Empty() || !is_running; });
     }
 
     using CommandQueue = Common::SPSCQueue<CommandDataContainer>;
     CommandQueue queue;
+    std::mutex write_lock;
     std::atomic<u64> last_fence{};
     std::atomic<u64> signaled_fence{};
+    std::condition_variable cv;
 };
 
 /// Class used to manage the GPU thread
@@ -195,6 +199,8 @@ public:
     ~ThreadManager();
 
     void StartThread(VideoCore::RendererBase& renderer, Frontend::GraphicsContext& context);
+
+    void ShutDown();
 
     void SubmitList(PAddr list, u32 size);
 
@@ -216,7 +222,7 @@ private:
     void Synchronize(u64 fence, Settings::GpuTimingMode mode);
 
     /// Pushes a command to be executed by the GPU thread
-    u64 PushCommand(CommandData&& command_data);
+    u64 PushCommand(CommandData&& command_data, Settings::GpuTimingMode mode);
 
     /// Returns true if this is called by the GPU thread
     bool IsGpuThread() const {

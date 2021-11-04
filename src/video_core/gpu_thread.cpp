@@ -33,36 +33,39 @@ static void RunThread(VideoCore::RendererBase& renderer, Frontend::GraphicsConte
     auto current_context = context.Acquire();
 
     while (state.is_running) {
-        state.WaitForCommands();
+        CommandDataContainer next = state.queue.PopWait();
 
-        while (!state.queue.Empty()) {
-            CommandDataContainer next = state.queue.Front();
-
-            auto command = &next.data;
-            auto fence = next.fence;
-            if (const auto submit_list = std::get_if<SubmitListCommand>(command)) {
-                Pica::CommandProcessor::ProcessCommandList(submit_list->list, submit_list->size);
-            } else if (const auto data = std::get_if<SwapBuffersCommand>(command)) {
-                renderer.SwapBuffers();
-                Pica::CommandProcessor::AfterSwapBuffers();
-            } else if (const auto data = std::get_if<MemoryFillCommand>(command)) {
-                Pica::CommandProcessor::ProcessMemoryFill(*(data->config));
-                const bool is_second_filler = fence & (1llu << 63);
-                Pica::CommandProcessor::AfterMemoryFill(is_second_filler);
-            } else if (const auto data = std::get_if<DisplayTransferCommand>(command)) {
-                Pica::CommandProcessor::ProcessDisplayTransfer(*(data->config));
-                Pica::CommandProcessor::AfterDisplayTransfer();
-            } else if (const auto data = std::get_if<FlushRegionCommand>(command)) {
-                renderer.Rasterizer()->FlushRegion(data->addr, data->size);
-            } else if (const auto data = std::get_if<FlushAndInvalidateRegionCommand>(command)) {
-                renderer.Rasterizer()->FlushAndInvalidateRegion(data->addr, data->size);
-            } else if (const auto data = std::get_if<InvalidateRegionCommand>(command)) {
-                renderer.Rasterizer()->InvalidateRegion(data->addr, data->size);
-            } else {
-                UNREACHABLE();
-            }
-            state.signaled_fence = next.fence;
-            state.queue.Pop();
+        auto command = &next.data;
+        auto fence = next.fence;
+        if (const auto submit_list = std::get_if<SubmitListCommand>(command)) {
+            Pica::CommandProcessor::ProcessCommandList(submit_list->list, submit_list->size);
+        } else if (const auto data = std::get_if<SwapBuffersCommand>(command)) {
+            renderer.SwapBuffers();
+            Pica::CommandProcessor::AfterSwapBuffers();
+        } else if (const auto data = std::get_if<MemoryFillCommand>(command)) {
+            Pica::CommandProcessor::ProcessMemoryFill(*(data->config));
+            const bool is_second_filler = fence & (1llu << 63);
+            Pica::CommandProcessor::AfterMemoryFill(is_second_filler);
+        } else if (const auto data = std::get_if<DisplayTransferCommand>(command)) {
+            Pica::CommandProcessor::ProcessDisplayTransfer(*(data->config));
+            Pica::CommandProcessor::AfterDisplayTransfer();
+        } else if (const auto data = std::get_if<FlushRegionCommand>(command)) {
+            renderer.Rasterizer()->FlushRegion(data->addr, data->size);
+        } else if (const auto data = std::get_if<FlushAndInvalidateRegionCommand>(command)) {
+            renderer.Rasterizer()->FlushAndInvalidateRegion(data->addr, data->size);
+        } else if (const auto data = std::get_if<InvalidateRegionCommand>(command)) {
+            renderer.Rasterizer()->InvalidateRegion(data->addr, data->size);
+        } else if (std::holds_alternative<EndProcessingCommand>(next.data)) {
+            ASSERT(state.is_running == false);
+        } else {
+            UNREACHABLE();
+        }
+        state.signaled_fence.store(next.fence);
+        if (next.block) {
+            // We have to lock the write_lock to ensure that the condition_variable wait not get
+            // a race between the check and the lock itself.
+            std::lock_guard lk(state.write_lock);
+            state.cv.notify_all();
         }
     }
 }
@@ -73,13 +76,7 @@ ThreadManager::ThreadManager(Core::System& system) : system{system}, renderer{re
 }
 
 ThreadManager::~ThreadManager() {
-    if (!thread->joinable()) {
-        return;
-    }
-
-    // Notify GPU thread that a shutdown is pending
-    state.is_running.exchange(false);
-    thread->join();
+    ThreadManager::ShutDown();
 }
 
 void ThreadManager::StartThread(VideoCore::RendererBase& renderer,
@@ -89,12 +86,34 @@ void ThreadManager::StartThread(VideoCore::RendererBase& renderer,
     thread_id = thread->get_id();
 }
 
+void ThreadManager::ShutDown() {
+    if (!state.is_running) {
+        return;
+    }
+
+    {
+        std::scoped_lock lk(state.write_lock);
+        state.is_running = false;
+        state.cv.notify_all();
+    }
+
+    if (!thread->joinable()) {
+        return;
+    }
+
+    // Notify GPU thread that a shutdown is pending
+    PushCommand(EndProcessingCommand(), Settings::GpuTimingMode::Skip);
+    thread->join();
+}
+
 void ThreadManager::Synchronize(u64 fence, Settings::GpuTimingMode mode) {
     int timeout_us{};
 
     switch (mode) {
     case Settings::GpuTimingMode::Asynch:
     case Settings::GpuTimingMode::Skip:
+    // PushCommand should take care of synchronous wait
+    case Settings::GpuTimingMode::Synch:
         return;
     case Settings::GpuTimingMode::Asynch_10us:
         timeout_us = 10;
@@ -143,11 +162,8 @@ void ThreadManager::Synchronize(u64 fence, Settings::GpuTimingMode mode) {
         break;
     }
 
-    if (timeout_us > 0) {
-        system.CoreTiming().ScheduleEvent(usToCycles(timeout_us), synchronize_event, fence);
-    } else if (timeout_us == 0) {
-        state.WaitForSynchronization(fence);
-    }
+    ASSERT(timeout_us > 0);
+    system.CoreTiming().ScheduleEvent(usToCycles(timeout_us), synchronize_event, fence);
 }
 
 void ThreadManager::SubmitList(PAddr list, u32 size) {
@@ -155,21 +171,19 @@ void ThreadManager::SubmitList(PAddr list, u32 size) {
         return;
     }
 
-    Synchronize(PushCommand(SubmitListCommand{list, size}),
-                Settings::values.gpu_timing_mode_submit_list);
+    PushCommand(SubmitListCommand{list, size}, Settings::values.gpu_timing_mode_submit_list);
 }
 
 void ThreadManager::SwapBuffers() {
-    Synchronize(PushCommand(SwapBuffersCommand{}), Settings::values.gpu_timing_mode_swap_buffers);
+    PushCommand(SwapBuffersCommand{}, Settings::values.gpu_timing_mode_swap_buffers);
 }
 
 void ThreadManager::DisplayTransfer(const GPU::Regs::DisplayTransferConfig* config) {
-    Synchronize(PushCommand(DisplayTransferCommand{config}),
-                Settings::values.gpu_timing_mode_display_transfer);
+    PushCommand(DisplayTransferCommand{config}, Settings::values.gpu_timing_mode_display_transfer);
 }
 
 void ThreadManager::MemoryFill(const GPU::Regs::MemoryFillConfig* config, bool is_second_filler) {
-    Synchronize(PushCommand(MemoryFillCommand{config, is_second_filler}),
+    PushCommand(MemoryFillCommand{config, is_second_filler},
                 Settings::values.gpu_timing_mode_memory_fill);
 }
 
@@ -179,8 +193,7 @@ void ThreadManager::FlushRegion(VAddr addr, u64 size) {
     }
 
     if (!IsGpuThread()) {
-        Synchronize(PushCommand(FlushRegionCommand{addr, size}),
-                    Settings::values.gpu_timing_mode_flush);
+        PushCommand(FlushRegionCommand{addr, size}, Settings::values.gpu_timing_mode_flush);
     } else {
         renderer.Rasterizer()->FlushRegion(addr, size);
     }
@@ -192,7 +205,7 @@ void ThreadManager::FlushAndInvalidateRegion(VAddr addr, u64 size) {
     }
 
     if (!IsGpuThread()) {
-        Synchronize(PushCommand(InvalidateRegionCommand{addr, size}),
+        PushCommand(InvalidateRegionCommand{addr, size},
                     Settings::values.gpu_timing_mode_flush_and_invalidate);
     } else {
         renderer.Rasterizer()->InvalidateRegion(addr, size);
@@ -205,16 +218,27 @@ void ThreadManager::InvalidateRegion(VAddr addr, u64 size) {
     }
 
     if (!IsGpuThread()) {
-        Synchronize(PushCommand(InvalidateRegionCommand{addr, size}),
+        PushCommand(InvalidateRegionCommand{addr, size},
                     Settings::values.gpu_timing_mode_invalidate);
     } else {
         renderer.Rasterizer()->InvalidateRegion(addr, size);
     }
 }
 
-u64 ThreadManager::PushCommand(CommandData&& command_data) {
+u64 ThreadManager::PushCommand(CommandData&& command_data, Settings::GpuTimingMode mode) {
+    std::unique_lock lk(state.write_lock);
     const u64 fence{++state.last_fence};
-    state.queue.Push(CommandDataContainer(std::move(command_data), fence));
+    const bool block =
+        (mode != Settings::GpuTimingMode::Skip) && (mode != Settings::GpuTimingMode::Asynch);
+    state.queue.Push(CommandDataContainer(std::move(command_data), fence, block));
+    if (mode == Settings::GpuTimingMode::Synch) {
+        state.cv.wait(lk, [this, fence] {
+            return fence <= state.signaled_fence.load(std::memory_order_relaxed) ||
+                   !state.is_running;
+        });
+    } else {
+        Synchronize(fence, mode);
+    }
     return fence;
 }
 
@@ -227,14 +251,16 @@ void SynchState::WaitForSynchronization(u64 fence) {
     if (fence > last_fence) { // We don't want to wait infinitely
         return;
     }
-    if (signaled_fence >= fence) {
+    if (signaled_fence.load(std::memory_order_relaxed) >= fence) {
         return;
     }
 
     // Wait for the GPU to be idle (all commands to be executed)
     MICROPROFILE_SCOPE(GPU_wait);
-    while (signaled_fence < fence && is_running) {
-    }
+    std::unique_lock lk(write_lock);
+    cv.wait(lk, [this, fence] {
+        return fence <= signaled_fence.load(std::memory_order_relaxed) || !is_running;
+    });
 }
 
 } // namespace VideoCore::GPUThread
