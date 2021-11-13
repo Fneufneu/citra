@@ -76,6 +76,7 @@
 #include "core/file_sys/archive_extsavedata.h"
 #include "core/file_sys/archive_source_sd_savedata.h"
 #include "core/frontend/applets/default_applets.h"
+#include "core/game_settings.h"
 #include "core/gdbstub/gdbstub.h"
 #include "core/hle/service/fs/archive.h"
 #include "core/hle/service/nfc/nfc.h"
@@ -999,6 +1000,10 @@ bool GMainWindow::LoadROM(const QString& filename) {
     system.GetAppLoader().ReadTitle(title);
     game_title = QString::fromStdString(title);
     UpdateWindowTitle();
+
+    u64 program_id;
+    system.GetAppLoader().ReadProgramId(program_id);
+    GameSettings::LoadOverrides(program_id);
 
     game_path = filename;
 
