@@ -24,7 +24,6 @@ class MemorySystem;
 namespace VideoCore {
 
 class GPUBackend;
-class RendererBase;
 
 extern std::unique_ptr<VideoCore::GPUBackend> g_gpu;
 
