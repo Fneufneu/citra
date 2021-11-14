@@ -272,6 +272,9 @@ public:
         if (!isVisible()) {
             return;
         }
+        if (!Core::System::GetInstance().IsPoweredOn()) {
+            return;
+        }
         context->MakeCurrent();
         const auto f = context->GetShareContext()->extraFunctions();
         f->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

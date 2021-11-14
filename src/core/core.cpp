@@ -433,7 +433,7 @@ System::ResultStatus System::Init(Frontend::EmuWindow& emu_window, u32 system_mo
 
     LOG_DEBUG(Core, "Initialized OK");
 
-    initalized = true;
+    is_powered_on = true;
 
     return ResultStatus::Success;
 }
@@ -542,6 +542,8 @@ void System::Shutdown(bool is_deserializing) {
     telemetry_session->AddField(performance, "Mean_Frametime_MS", perf_stats->GetMeanFrametime());
 
     // Shutdown emulation session
+    is_powered_on = false;
+
     VideoCore::Shutdown();
     HW::Shutdown();
     if (!is_deserializing) {
