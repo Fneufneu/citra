@@ -51,13 +51,6 @@ ResultStatus Init(Core::System& system, Frontend::EmuWindow& emu_window,
     auto context = emu_window.CreateSharedContext();
 
     auto renderer = std::make_unique<OpenGL::RendererOpenGL>(emu_window, *context);
-    ResultStatus result = renderer->Init();
-    if (result != ResultStatus::Success) {
-        LOG_ERROR(Render, "initialization failed !");
-        return result;
-    } else {
-        LOG_DEBUG(Render, "initialized OK");
-    }
 
     if (Settings::values.use_asynchronous_gpu_emulation) {
         g_gpu = std::make_unique<VideoCore::GPUParallel>(system, std::move(renderer),
@@ -65,6 +58,14 @@ ResultStatus Init(Core::System& system, Frontend::EmuWindow& emu_window,
     } else {
         g_gpu =
             std::make_unique<VideoCore::GPUSerial>(system, std::move(renderer), std::move(context));
+    }
+
+    ResultStatus result = g_gpu->Renderer().Init();
+    if (result != ResultStatus::Success) {
+        LOG_ERROR(Render, "initialization failed !");
+        return result;
+    } else {
+        LOG_DEBUG(Render, "initialized OK");
     }
 
     return ResultStatus::Success;
