@@ -477,10 +477,17 @@ void GRenderWindow::resizeEvent(QResizeEvent* event) {
 
 std::unique_ptr<Frontend::GraphicsContext> GRenderWindow::CreateSharedContext() const {
     auto c = static_cast<OpenGLSharedContext*>(main_context.get());
+#ifndef __APPLE__
     // Bind the shared contexts to the main surface in case the backend wants to take over
     // presentation
     return std::make_unique<OpenGLSharedContext>(c->GetShareContext(),
                                                  child_widget->windowHandle());
+#else
+    // Mac OS doesnt like it when we bind the window surface to non UI threads. We should
+    // be fine since it doesn't have any debug tools that would require the backend to take over
+    // presentation
+    return std::make_unique<OpenGLSharedContext>(c->GetShareContext());
+#endif // !__APPLE__
 }
 
 bool GRenderWindow::InitRenderTarget() {

@@ -1314,7 +1314,10 @@ VideoCore::ResultStatus RendererOpenGL::Init() {
         return VideoCore::ResultStatus::ErrorBelowGL33;
     }
 
+    // TODO(SachinV): Can't take over presentation on macos.
+#ifndef __APPLE__
     has_debug_tool = HasDebugTool();
+#endif // !__APPLE__
 
     InitOpenGLObjects();
 
