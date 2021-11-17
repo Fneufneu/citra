@@ -62,13 +62,12 @@ ResultStatus Init(Core::System& system, Frontend::EmuWindow& emu_window,
 
     ResultStatus result = g_gpu->Renderer().Init();
     if (result != ResultStatus::Success) {
-        LOG_ERROR(Render, "initialization failed !");
-        return result;
+        LOG_ERROR(Render, "Initialization failed!");
     } else {
-        LOG_DEBUG(Render, "initialized OK");
+        LOG_DEBUG(Render, "Initialized OK");
     }
 
-    return ResultStatus::Success;
+    return result;
 }
 
 /// Shutdown the video core
